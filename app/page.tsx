@@ -14,12 +14,20 @@ export default function LandingPage() {
             </div>
             <span className="text-xl font-bold neon-glow-purple">Heael</span>
           </div>
-          <Link
-            href="/dashboard"
-            className="px-6 py-2 bg-gradient-to-r from-primary to-secondary text-primary-foreground rounded-lg font-semibold hover:shadow-lg hover:shadow-primary/50 transition-all"
-          >
-            Get Started
-          </Link>
+          <div className="flex items-center gap-4">
+            <Link
+              href="/login"
+              className="px-6 py-2 text-foreground/70 hover:text-foreground transition-all font-semibold"
+            >
+              Sign In
+            </Link>
+            <Link
+              href="/login"
+              className="px-6 py-2 bg-gradient-to-r from-primary to-secondary text-primary-foreground rounded-lg font-semibold hover:shadow-lg hover:shadow-primary/50 transition-all"
+            >
+              Get Started
+            </Link>
+          </div>
         </div>
       </nav>
 
@@ -37,7 +45,7 @@ export default function LandingPage() {
             Track your wellness journey with real-time AI insights. Monitor mood, sleep, and activity while competing with friends.
           </p>
           <Link
-            href="/dashboard"
+            href="/login"
             className="inline-flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-primary to-secondary text-primary-foreground rounded-lg font-bold text-lg hover:shadow-2xl hover:shadow-primary/50 transition-all transform hover:scale-105"
           >
             Start Your Journey <ArrowRight className="w-5 h-5" />
@@ -115,7 +123,7 @@ export default function LandingPage() {
               Start tracking your wellness today and discover insights that help you live better.
             </p>
             <Link
-              href="/dashboard"
+              href="/login"
               className="inline-flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-primary to-secondary text-primary-foreground rounded-lg font-bold text-lg hover:shadow-2xl hover:shadow-primary/50 transition-all"
             >
               Get Started Now <ArrowRight className="w-5 h-5" />

@@ -1,11 +1,16 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { AppLayout } from '@/components/layout/AppLayout';
 import { GlassCard } from '@/components/ui/GlassCard';
+import { SignOutButton } from '@/components/layout/SignOutButton';
 import { currentUser, healthMetrics } from '@/lib/mockData';
 import { Calendar, Mail, TrendingUp, Award } from 'lucide-react';
+import { useSession } from 'next-auth/react';
 
 export default function ProfilePage() {
+  const { data: session } = useSession();
   const avgMood = (healthMetrics.reduce((sum, m) => sum + m.mood, 0) / healthMetrics.length).toFixed(1);
   const avgSleep = (healthMetrics.reduce((sum, m) => sum + m.sleepHours, 0) / healthMetrics.length).toFixed(1);
   const totalActivity = healthMetrics.reduce((sum, m) => sum + m.activityMinutes, 0);
@@ -27,11 +32,13 @@ export default function ProfilePage() {
             </div>
 
             <div className="flex-1">
-              <h2 className="text-3xl font-bold text-foreground mb-2">{currentUser.name}</h2>
+              <h2 className="text-3xl font-bold text-foreground mb-2">
+                {session?.user?.name || currentUser.name}
+              </h2>
               <div className="space-y-1 mb-4">
                 <div className="flex items-center gap-2 text-foreground/60">
                   <Mail className="w-4 h-4" />
-                  {currentUser.email}
+                  {session?.user?.email || currentUser.email}
                 </div>
                 <div className="flex items-center gap-2 text-foreground/60">
                   <Calendar className="w-4 h-4" />
@@ -135,10 +142,9 @@ export default function ProfilePage() {
               <span className="text-foreground/70">Data & Privacy</span>
               <span className="text-foreground/50">›</span>
             </button>
-            <button className="w-full flex items-center justify-between p-4 hover:bg-white/5 rounded-lg transition-colors border-t border-white/10">
-              <span className="text-destructive">Sign Out</span>
-              <span className="text-foreground/50">›</span>
-            </button>
+            <div className="border-t border-white/10 pt-3">
+              <SignOutButton />
+            </div>
           </div>
         </GlassCard>
       </div>

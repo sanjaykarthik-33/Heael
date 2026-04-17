@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { AppLayout } from '@/components/layout/AppLayout';
 import { WellnessScore } from '@/components/dashboard/WellnessScore';
 import { HealthInputs } from '@/components/dashboard/HealthInputs';

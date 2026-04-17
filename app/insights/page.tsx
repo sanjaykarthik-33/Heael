@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { AppLayout } from '@/components/layout/AppLayout';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { healthPatterns, healthMetrics } from '@/lib/mockData';

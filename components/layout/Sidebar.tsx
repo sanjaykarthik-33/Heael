@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { BarChart3, Zap, Flame, User, Home } from 'lucide-react';
+import { SignOutButton } from './SignOutButton';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: Home },
@@ -47,11 +48,12 @@ export function Sidebar() {
       </nav>
 
       {/* Footer */}
-      <div className="p-4 border-t border-primary/20">
+      <div className="p-4 border-t border-primary/20 space-y-3">
         <div className="bg-gradient-to-r from-primary/20 to-secondary/20 rounded-lg p-4 text-sm">
           <p className="font-semibold text-primary mb-1">Wellness Streak</p>
           <p className="text-foreground/70">12 days active 🔥</p>
         </div>
+        <SignOutButton />
       </div>
     </aside>
   );
