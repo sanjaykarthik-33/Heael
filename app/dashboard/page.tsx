@@ -19,25 +19,25 @@ export default function DashboardPage() {
 
   return (
     <AppLayout>
-      <div className="p-8">
+      <div className="w-full">
         {/* Header */}
-        <div className="mb-8 animate-slide-in">
-          <h1 className="text-4xl font-bold mb-2">
+        <div className="mb-6 md:mb-8 animate-slide-in">
+          <h1 className="text-2xl md:text-4xl font-bold mb-2">
             Welcome back, <span className="neon-glow-purple">{currentUser.name}</span>
           </h1>
-          <p className="text-foreground/60">Let&apos;s check on your wellness journey</p>
+          <p className="text-sm md:text-base text-foreground/60">Let&apos;s check on your wellness journey</p>
         </div>
 
         {/* Main Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 mb-6 md:mb-8">
           <WellnessScore score={currentUser.wellnessScore} />
           <HealthInputs />
         </div>
 
         {/* AI Insights */}
-        <div className="mb-8">
-          <h2 className="text-2xl font-bold mb-4">AI Insights</h2>
-          <div className="space-y-4">
+        <div className="mb-6 md:mb-8">
+          <h2 className="text-xl md:text-2xl font-bold mb-3 md:mb-4">AI Insights</h2>
+          <div className="space-y-3 md:space-y-4">
             {aiInsights.slice(0, 3).map((insight) => (
               <AIInsightCard key={insight.id} insight={insight} />
             ))}
