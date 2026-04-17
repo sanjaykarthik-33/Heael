@@ -3,6 +3,8 @@ import { User } from '@/lib/models/User';
 import { getServerSession } from 'next-auth/next';
 import { NextRequest, NextResponse } from 'next/server';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession();
@@ -96,20 +98,6 @@ export async function GET(request: NextRequest) {
     console.error('Error fetching user data:', error);
     return NextResponse.json(
       { error: 'Failed to fetch user data', details: String(error) },
-      { status: 500 }
-    );
-  }
-}
-        { error: 'User not found' },
-        { status: 404 }
-      );
-    }
-
-    return NextResponse.json(user);
-  } catch (error) {
-    console.error('Error fetching user data:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
       { status: 500 }
     );
   }

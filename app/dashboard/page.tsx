@@ -68,13 +68,22 @@ export default function DashboardPage() {
     sleep: metric.sleepHours,
   })).slice(-7); // Last 7 days
 
+  const stats = {
+    averageMood: Number(userData?.averageMood ?? userData?.mood ?? 0),
+    averageSleep: Number(userData?.averageSleep ?? userData?.sleepHours ?? 0),
+    weeklyActivityMinutes: Number(userData?.weeklyActivityMinutes ?? userData?.activity ?? 0),
+    memberSinceYear: userData?.createdAt
+      ? new Date(userData.createdAt).getFullYear()
+      : new Date().getFullYear(),
+  };
+
   return (
     <AppLayout>
       <div className="w-full">
         {/* Header */}
         <div className="mb-6 md:mb-8 animate-slide-in">
           <h1 className="text-2xl md:text-4xl font-bold mb-2">
-            Welcome back, <span className="neon-glow-purple">{session.user.name || 'User'}</span>
+            Welcome back, <span className="neon-glow-purple">{session.user?.name || 'User'}</span>
           </h1>
           <p className="text-sm md:text-base text-foreground/60">Let&apos;s check on your wellness journey</p>
         </div>
@@ -167,25 +176,25 @@ export default function DashboardPage() {
           <GlassCard>
             <div className="text-center py-4">
               <p className="text-foreground/60 text-sm mb-2">Avg Mood</p>
-              <p className="text-2xl font-bold neon-glow-purple">{currentUser.averageMood.toFixed(1)}</p>
+              <p className="text-2xl font-bold neon-glow-purple">{stats.averageMood.toFixed(1)}</p>
             </div>
           </GlassCard>
           <GlassCard>
             <div className="text-center py-4">
               <p className="text-foreground/60 text-sm mb-2">Avg Sleep</p>
-              <p className="text-2xl font-bold neon-glow-cyan">{currentUser.averageSleep.toFixed(1)}h</p>
+              <p className="text-2xl font-bold neon-glow-cyan">{stats.averageSleep.toFixed(1)}h</p>
             </div>
           </GlassCard>
           <GlassCard>
             <div className="text-center py-4">
               <p className="text-foreground/60 text-sm mb-2">Weekly Activity</p>
-              <p className="text-2xl font-bold text-accent">{currentUser.weeklyActivityMinutes} min</p>
+              <p className="text-2xl font-bold text-accent">{stats.weeklyActivityMinutes} min</p>
             </div>
           </GlassCard>
           <GlassCard>
             <div className="text-center py-4">
               <p className="text-foreground/60 text-sm mb-2">Member Since</p>
-              <p className="text-lg font-bold text-secondary">{currentUser.joinDate.getFullYear()}</p>
+              <p className="text-lg font-bold text-secondary">{stats.memberSinceYear}</p>
             </div>
           </GlassCard>
         </div>

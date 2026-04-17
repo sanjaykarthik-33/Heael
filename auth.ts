@@ -34,14 +34,20 @@ export const authConfig: NextAuthOptions = {
      * Security: Sign-in callback - validates provider and email
      * Prevents unauthorized provider access
      */
-    async signIn({ user, account, profile }: { user: any; account: any; profile: any }) {
+    async signIn({ user, account, profile }) {
       // Only allow Google OAuth
       if (account?.provider !== 'google') {
         return false;
       }
 
       // Verify email exists and is verified by Google
-      if (!user.email || !profile?.email_verified) {
+      const emailVerified =
+        typeof profile === 'object' &&
+        profile !== null &&
+        'email_verified' in profile &&
+        Boolean((profile as { email_verified?: boolean }).email_verified);
+
+      if (!user?.email || !emailVerified) {
         return false;
       }
 
