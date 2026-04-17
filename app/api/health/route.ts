@@ -1,14 +1,11 @@
 import { connectDB } from '@/lib/mongodb';
 import { User } from '@/lib/models/User';
-import { getSession } from 'next-auth/react';
+import { getServerSession } from 'next-auth/next';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
   try {
-    await connectDB();
-
-    // Get session
-    const session = await getSession({ req: request });
+    const session = await getServerSession();
     
     if (!session?.user?.email) {
       return NextResponse.json(
@@ -16,6 +13,8 @@ export async function POST(request: NextRequest) {
         { status: 401 }
       );
     }
+
+    await connectDB();
 
     const body = await request.json();
     const { mood, sleepHours, activity } = body;
@@ -60,7 +59,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Error updating health data:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Failed to save health data', details: String(error) },
       { status: 500 }
     );
   }
@@ -68,9 +67,7 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    await connectDB();
-
-    const session = await getSession({ req: request });
+    const session = await getServerSession();
     
     if (!session?.user?.email) {
       return NextResponse.json(
@@ -79,10 +76,30 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    await connectDB();
+
     const user = await User.findOne({ email: session.user.email });
 
     if (!user) {
-      return NextResponse.json(
+      // Return default data for new user
+      return NextResponse.json({
+        wellnessScore: 0,
+        mood: 5,
+        sleepHours: 7,
+        activity: 0,
+        healthMetrics: [],
+      });
+    }
+
+    return NextResponse.json(user);
+  } catch (error) {
+    console.error('Error fetching user data:', error);
+    return NextResponse.json(
+      { error: 'Failed to fetch user data', details: String(error) },
+      { status: 500 }
+    );
+  }
+}
         { error: 'User not found' },
         { status: 404 }
       );

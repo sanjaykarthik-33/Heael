@@ -16,17 +16,23 @@ export default function DashboardPage() {
   const { data: session } = useSession();
   const [userData, setUserData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchUserData = async () => {
       try {
+        setError(null);
         const response = await fetch('/api/health');
         if (response.ok) {
           const data = await response.json();
           setUserData(data);
+        } else {
+          const errorData = await response.json();
+          setError(errorData.error || 'Failed to load data');
         }
       } catch (error) {
         console.error('Error fetching user data:', error);
+        setError('Network error. Check console.');
       } finally {
         setLoading(false);
       }
@@ -37,8 +43,23 @@ export default function DashboardPage() {
     }
   }, [session]);
 
-  if (!session || loading) {
-    return <AppLayout><div className="p-4">Loading...</div></AppLayout>;
+  if (!session) {
+    return <AppLayout><div className="p-4">Not signed in</div></AppLayout>;
+  }
+
+  if (loading) {
+    return <AppLayout><div className="p-4">Loading your wellness data...</div></AppLayout>;
+  }
+
+  if (error) {
+    return (
+      <AppLayout>
+        <div className="p-4 bg-red-500/20 border border-red-500 rounded-lg">
+          <p className="text-red-200">⚠️ {error}</p>
+          <p className="text-sm text-red-200/70 mt-2">Make sure MONGODB_URI is added to Vercel environment variables</p>
+        </div>
+      </AppLayout>
+    );
   }
 
   const chartData = (userData?.healthMetrics || []).map((metric: any) => ({
