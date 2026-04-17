@@ -1,14 +1,45 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { GlassCard } from '@/components/ui/GlassCard';
 
 export function HealthInputs() {
   const [mood, setMood] = useState(7);
   const [sleep, setSleep] = useState(7);
   const [activity, setActivity] = useState(30);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
 
   const moodEmojis = ['😢', '😔', '😐', '🙂', '😊', '😄', '😄', '😍', '🤩', '🤩'];
+
+  const saveHealthData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setMessage('');
+
+      const response = await fetch('/api/health', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mood,
+          sleepHours: sleep,
+          activity: activity / 60, // Convert minutes to hours
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save health data');
+      }
+
+      setMessage('✓ Saved successfully!');
+      setTimeout(() => setMessage(''), 3000);
+    } catch (error) {
+      setMessage('✗ Failed to save');
+      console.error('Error saving health data:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [mood, sleep, activity]);
 
   return (
     <GlassCard className="col-span-1 md:col-span-2">
@@ -66,8 +97,20 @@ export function HealthInputs() {
           />
         </div>
 
-        <button className="w-full mt-4 py-3 bg-gradient-to-r from-primary to-secondary text-primary-foreground rounded-lg font-semibold hover:shadow-lg hover:shadow-primary/50 transition-all duration-300">
-          Log Data
+        {message && (
+          <div className={`text-sm font-medium ${
+            message.includes('success') ? 'text-green-400' : 'text-red-400'
+          }`}>
+            {message}
+          </div>
+        )}
+
+        <button
+          onClick={saveHealthData}
+          disabled={loading}
+          className="w-full mt-4 py-3 bg-gradient-to-r from-primary to-secondary text-primary-foreground rounded-lg font-semibold hover:shadow-lg hover:shadow-primary/50 transition-all duration-300 disabled:opacity-50"
+        >
+          {loading ? 'Saving...' : 'Log Data'}
         </button>
       </div>
     </GlassCard>

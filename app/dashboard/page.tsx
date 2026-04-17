@@ -2,20 +2,50 @@
 
 export const dynamic = 'force-dynamic';
 
+import { useState, useEffect } from 'react';
+import { useSession } from 'next-auth/react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { WellnessScore } from '@/components/dashboard/WellnessScore';
 import { HealthInputs } from '@/components/dashboard/HealthInputs';
 import { AIInsightCard } from '@/components/dashboard/AIInsightCard';
 import { GlassCard } from '@/components/ui/GlassCard';
-import { currentUser, aiInsights, healthMetrics } from '@/lib/mockData';
+import { aiInsights } from '@/lib/mockData';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 export default function DashboardPage() {
-  const chartData = healthMetrics.map((metric) => ({
-    date: metric.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+  const { data: session } = useSession();
+  const [userData, setUserData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchUserData = async () => {
+      try {
+        const response = await fetch('/api/health');
+        if (response.ok) {
+          const data = await response.json();
+          setUserData(data);
+        }
+      } catch (error) {
+        console.error('Error fetching user data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (session?.user) {
+      fetchUserData();
+    }
+  }, [session]);
+
+  if (!session || loading) {
+    return <AppLayout><div className="p-4">Loading...</div></AppLayout>;
+  }
+
+  const chartData = (userData?.healthMetrics || []).map((metric: any) => ({
+    date: new Date(metric.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
     mood: metric.mood,
     sleep: metric.sleepHours,
-  }));
+  })).slice(-7); // Last 7 days
 
   return (
     <AppLayout>
@@ -23,14 +53,14 @@ export default function DashboardPage() {
         {/* Header */}
         <div className="mb-6 md:mb-8 animate-slide-in">
           <h1 className="text-2xl md:text-4xl font-bold mb-2">
-            Welcome back, <span className="neon-glow-purple">{currentUser.name}</span>
+            Welcome back, <span className="neon-glow-purple">{session.user.name || 'User'}</span>
           </h1>
           <p className="text-sm md:text-base text-foreground/60">Let&apos;s check on your wellness journey</p>
         </div>
 
         {/* Main Grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 mb-6 md:mb-8">
-          <WellnessScore score={currentUser.wellnessScore} />
+          <WellnessScore score={userData?.wellnessScore || 0} />
           <HealthInputs />
         </div>
 
