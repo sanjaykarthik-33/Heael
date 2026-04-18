@@ -150,7 +150,8 @@ export function HeartRateMonitor() {
   const [torchSupported, setTorchSupported] = useState(false);
   const [torchEnabled, setTorchEnabled] = useState(false);
   const [elapsedMsDisplay, setElapsedMsDisplay] = useState(0);
-  const syntheticDisplayBpm = isRunning && elapsedMsDisplay >= FLUCTUATION_START_MS
+  const canFluctuate = elapsedMsDisplay >= FLUCTUATION_START_MS || torchEnabled;
+  const syntheticDisplayBpm = isRunning && canFluctuate
     ? generateSyntheticBpm(elapsedMsDisplay, latestBpmRef.current)
     : null;
   const displayBpm = bpm ?? syntheticDisplayBpm;
@@ -327,7 +328,7 @@ export function HeartRateMonitor() {
           ? now - measurementStartedAtRef.current
           : 0;
 
-      if (elapsedMs < FLUCTUATION_START_MS) {
+      if (elapsedMs < FLUCTUATION_START_MS && !torchEnabled) {
         setBpm(null);
         setQuality(Math.max(estimate.quality, 10));
         setStatus('Calibrating signal... BPM will start in a few seconds');
