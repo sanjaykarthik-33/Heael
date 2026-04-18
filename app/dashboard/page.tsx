@@ -9,6 +9,7 @@ import { WellnessScore } from '@/components/dashboard/WellnessScore';
 import { HealthInputs } from '@/components/dashboard/HealthInputs';
 import { AIInsightCard } from '@/components/dashboard/AIInsightCard';
 import { HeartRateMonitor } from '@/components/dashboard/HeartRateMonitor';
+import { StepCounter } from '@/components/dashboard/StepCounter';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { aiInsights } from '@/lib/mockData';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -140,6 +141,12 @@ export default function DashboardPage() {
         <div className="mb-6 md:mb-8">
           <h2 className="text-xl md:text-2xl font-bold mb-3 md:mb-4">Real-time Heart Rate</h2>
           <HeartRateMonitor />
+        </div>
+
+        {/* Real-time Step Counter */}
+        <div className="mb-6 md:mb-8">
+          <h2 className="text-xl md:text-2xl font-bold mb-3 md:mb-4">Real-time Step Counter</h2>
+          <StepCounter />
         </div>
 
         {/* Charts Section */}
