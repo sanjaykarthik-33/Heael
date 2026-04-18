@@ -10,7 +10,6 @@ type Sample = {
 
 const MIN_BPM = 40;
 const MAX_BPM = 180;
-const DETECTION_DURATION_MS = 20000;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -95,7 +94,6 @@ export function HeartRateMonitor() {
   const samplesRef = useRef<Sample[]>([]);
   const lastSampleAtRef = useRef<number>(0);
   const lastEstimateAtRef = useRef<number>(0);
-  const measurementStartedAtRef = useRef<number>(0);
 
   const [isRunning, setIsRunning] = useState(false);
   const [bpm, setBpm] = useState<number | null>(null);
@@ -139,7 +137,6 @@ export function HeartRateMonitor() {
     samplesRef.current = [];
     lastSampleAtRef.current = 0;
     lastEstimateAtRef.current = 0;
-    measurementStartedAtRef.current = 0;
     setIsRunning(false);
     setTorchEnabled(false);
     setTorchSupported(false);
@@ -223,7 +220,7 @@ export function HeartRateMonitor() {
           setStatus('Place finger fully over camera lens');
         }
 
-        const windowMs = DETECTION_DURATION_MS;
+        const windowMs = 12000;
         samplesRef.current = samplesRef.current.filter((s) => now - s.t <= windowMs);
       }
     }
@@ -231,15 +228,6 @@ export function HeartRateMonitor() {
     const estimateGapMs = 800;
     if (now - lastEstimateAtRef.current >= estimateGapMs) {
       lastEstimateAtRef.current = now;
-      const elapsed = measurementStartedAtRef.current > 0 ? now - measurementStartedAtRef.current : 0;
-      if (elapsed < DETECTION_DURATION_MS) {
-        const secondsLeft = Math.max(1, Math.ceil((DETECTION_DURATION_MS - elapsed) / 1000));
-        setStatus(`Reading pulse... keep still (${secondsLeft}s left)`);
-        setBpm(null);
-        setQuality(0);
-        rafRef.current = requestAnimationFrame(processFrame);
-        return;
-      }
       const estimate = estimateBpm(samplesRef.current);
       setBpm(estimate.bpm);
       setQuality(estimate.quality);
@@ -280,10 +268,9 @@ export function HeartRateMonitor() {
       const capabilities = track?.getCapabilities?.();
       const supportsTorch = Boolean(capabilities && 'torch' in capabilities);
       setTorchSupported(supportsTorch);
-      measurementStartedAtRef.current = performance.now();
 
       setIsRunning(true);
-      setStatus('Place finger over camera to start 20-second measurement');
+      setStatus('Place finger over camera to start measuring');
       rafRef.current = requestAnimationFrame(processFrame);
     } catch (e) {
       setIsRunning(false);
