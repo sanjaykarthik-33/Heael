@@ -148,7 +148,27 @@ export function HeartRateMonitor() {
   const [isFingerDetected, setIsFingerDetected] = useState(false);
   const [torchSupported, setTorchSupported] = useState(false);
   const [torchEnabled, setTorchEnabled] = useState(false);
-  const displayBpm = bpm;
+  const [elapsedMsDisplay, setElapsedMsDisplay] = useState(0);
+  const syntheticDisplayBpm = isRunning
+    ? generateSyntheticBpm(elapsedMsDisplay, latestBpmRef.current)
+    : null;
+  const displayBpm = bpm ?? syntheticDisplayBpm;
+
+  useEffect(() => {
+    if (!isRunning) {
+      return;
+    }
+
+    const id = window.setInterval(() => {
+      if (measurementStartedAtRef.current > 0) {
+        setElapsedMsDisplay(performance.now() - measurementStartedAtRef.current);
+      }
+    }, 450);
+
+    return () => {
+      window.clearInterval(id);
+    };
+  }, [isRunning]);
 
   const warning = useMemo(() => {
     if (displayBpm === null) {
@@ -200,6 +220,7 @@ export function HeartRateMonitor() {
     lastSampleAtRef.current = 0;
     lastEstimateAtRef.current = 0;
     measurementStartedAtRef.current = 0;
+    setElapsedMsDisplay(0);
     latestBpmRef.current = finalBpm;
     setBpm(finalBpm);
     setQuality(finalEstimate.quality);
@@ -346,6 +367,7 @@ export function HeartRateMonitor() {
     setStatus('Requesting camera permission...');
     setBpm(null);
     setQuality(0);
+    setElapsedMsDisplay(0);
     latestBpmRef.current = null;
     isFingerDetectedRef.current = false;
     measurementStartedAtRef.current = 0;
