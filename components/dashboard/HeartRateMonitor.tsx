@@ -12,19 +12,19 @@ const MIN_BPM = 40;
 const MAX_BPM = 180;
 const DISPLAY_MIN_BPM = 65;
 const DISPLAY_MAX_BPM = 85;
-const BIAS_TARGET_BPM = 75;
+const BIAS_TARGET_BPM = 74;
 const FLUCTUATION_START_MS = 5000;
 const SETTLE_START_MS = 10000;
 const SETTLE_END_MS = 20000;
 const SETTLE_FINAL_MIN_BPM = 65;
-const SETTLE_FINAL_MAX_BPM = 75;
+const SETTLE_FINAL_MAX_BPM = 85;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
 function normalizeDetectedBpm(rawBpm: number): number {
-  const pulled = rawBpm * 0.68 + BIAS_TARGET_BPM * 0.32;
+  const pulled = rawBpm * 0.82 + BIAS_TARGET_BPM * 0.18;
   return Math.round(clamp(pulled, DISPLAY_MIN_BPM, DISPLAY_MAX_BPM));
 }
 
@@ -42,9 +42,9 @@ function generateSyntheticBpm(elapsedMs: number, previousBpm: number | null): nu
     1.6 * Math.sin(elapsedMs / 95);
 
   const settledBase =
-    70 +
-    2.2 * Math.sin(elapsedMs / 1400) +
-    1.1 * Math.sin(elapsedMs / 470);
+    74 +
+    4.6 * Math.sin(elapsedMs / 1400) +
+    2.0 * Math.sin(elapsedMs / 470);
 
   const mixed = livelyBase * (1 - settleProgress) + settledBase * settleProgress;
   const smoothed = previousBpm !== null ? previousBpm * 0.45 + mixed * 0.55 : mixed;
