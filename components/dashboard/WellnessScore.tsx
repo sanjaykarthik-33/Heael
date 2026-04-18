@@ -11,19 +11,24 @@ export function WellnessScore({ score }: WellnessScoreProps) {
   const [displayScore, setDisplayScore] = useState(0);
 
   useEffect(() => {
-    let current = 0;
-    const increment = score / 60;
-    const timer = setInterval(() => {
-      current += increment;
-      if (current >= score) {
-        setDisplayScore(score);
-        clearInterval(timer);
-      } else {
-        setDisplayScore(Math.floor(current));
-      }
-    }, 20);
+    const start = displayScore;
+    const end = score;
+    const duration = 450;
+    const startTime = performance.now();
+    let frame = 0;
 
-    return () => clearInterval(timer);
+    const tick = (now: number) => {
+      const progress = Math.min((now - startTime) / duration, 1);
+      const next = Math.round(start + (end - start) * progress);
+      setDisplayScore(next);
+
+      if (progress < 1) {
+        frame = requestAnimationFrame(tick);
+      }
+    };
+
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
   }, [score]);
 
   return (

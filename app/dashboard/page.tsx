@@ -8,6 +8,7 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { WellnessScore } from '@/components/dashboard/WellnessScore';
 import { HealthInputs } from '@/components/dashboard/HealthInputs';
 import { AIInsightCard } from '@/components/dashboard/AIInsightCard';
+import { HeartRateMonitor } from '@/components/dashboard/HeartRateMonitor';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { aiInsights } from '@/lib/mockData';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -43,6 +44,10 @@ export default function DashboardPage() {
     }
   }, [session]);
 
+  const handleHealthSaved = (savedData: any) => {
+    setUserData(savedData);
+  };
+
   if (!session) {
     return <AppLayout><div className="p-4">Not signed in</div></AppLayout>;
   }
@@ -56,7 +61,7 @@ export default function DashboardPage() {
       <AppLayout>
         <div className="p-4 bg-red-500/20 border border-red-500 rounded-lg">
           <p className="text-red-200">⚠️ {error}</p>
-          <p className="text-sm text-red-200/70 mt-2">Make sure MONGODB_URI is added to Vercel environment variables</p>
+          <p className="text-sm text-red-200/70 mt-2">Make sure MONGODB_URI is set in .env.local (local) or Vercel environment variables (production)</p>
         </div>
       </AppLayout>
     );
@@ -68,10 +73,37 @@ export default function DashboardPage() {
     sleep: metric.sleepHours,
   })).slice(-7); // Last 7 days
 
+  const recentMetrics = (userData?.healthMetrics || []).slice(-7);
+  const avgMoodFromMetrics =
+    recentMetrics.length > 0
+      ? recentMetrics.reduce((sum: number, metric: any) => sum + Number(metric.mood || 0), 0) /
+        recentMetrics.length
+      : null;
+  const avgSleepFromMetrics =
+    recentMetrics.length > 0
+      ? recentMetrics.reduce((sum: number, metric: any) => sum + Number(metric.sleepHours || 0), 0) /
+        recentMetrics.length
+      : null;
+  const weeklyActivityFromMetrics =
+    recentMetrics.length > 0
+      ? recentMetrics.reduce(
+          (sum: number, metric: any) =>
+            sum + (Number(metric.activity || 0) > 5 ? Number(metric.activity || 0) : Number(metric.activity || 0) * 60),
+          0
+        )
+      : null;
+
   const stats = {
-    averageMood: Number(userData?.averageMood ?? userData?.mood ?? 0),
-    averageSleep: Number(userData?.averageSleep ?? userData?.sleepHours ?? 0),
-    weeklyActivityMinutes: Number(userData?.weeklyActivityMinutes ?? userData?.activity ?? 0),
+    averageMood: Number(avgMoodFromMetrics ?? userData?.mood ?? 0),
+    averageSleep: Number(avgSleepFromMetrics ?? userData?.sleepHours ?? 0),
+    weeklyActivityMinutes: Math.round(
+      Number(
+        weeklyActivityFromMetrics ??
+          (Number(userData?.activity ?? 0) > 5
+            ? Number(userData?.activity ?? 0)
+            : Number(userData?.activity ?? 0) * 60)
+      )
+    ),
     memberSinceYear: userData?.createdAt
       ? new Date(userData.createdAt).getFullYear()
       : new Date().getFullYear(),
@@ -91,7 +123,7 @@ export default function DashboardPage() {
         {/* Main Grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 mb-6 md:mb-8">
           <WellnessScore score={userData?.wellnessScore || 0} />
-          <HealthInputs />
+          <HealthInputs onSaved={handleHealthSaved} />
         </div>
 
         {/* AI Insights */}
@@ -102,6 +134,12 @@ export default function DashboardPage() {
               <AIInsightCard key={insight.id} insight={insight} />
             ))}
           </div>
+        </div>
+
+        {/* Real-time Heart Rate */}
+        <div className="mb-6 md:mb-8">
+          <h2 className="text-xl md:text-2xl font-bold mb-3 md:mb-4">Real-time Heart Rate</h2>
+          <HeartRateMonitor />
         </div>
 
         {/* Charts Section */}

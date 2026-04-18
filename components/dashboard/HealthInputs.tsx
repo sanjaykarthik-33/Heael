@@ -3,7 +3,11 @@
 import { useState, useCallback } from 'react';
 import { GlassCard } from '@/components/ui/GlassCard';
 
-export function HealthInputs() {
+interface HealthInputsProps {
+  onSaved?: (data: any) => void;
+}
+
+export function HealthInputs({ onSaved }: HealthInputsProps) {
   const [mood, setMood] = useState(7);
   const [sleep, setSleep] = useState(7);
   const [activity, setActivity] = useState(30);
@@ -27,10 +31,19 @@ export function HealthInputs() {
         }),
       });
 
+      const data = await response.json().catch(() => ({}));
+
       if (!response.ok) {
-        throw new Error('Failed to save health data');
+        setMessage(`✗ ${data?.error || 'Failed to save health data'}`);
+        return;
       }
 
+      if (data?.saved === false || data?.dbUnavailable) {
+        setMessage(`⚠ ${data?.warning || 'Saved locally only (database unavailable)'}`);
+        return;
+      }
+
+      onSaved?.(data);
       setMessage('✓ Saved successfully!');
       setTimeout(() => setMessage(''), 3000);
     } catch (error) {

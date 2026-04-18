@@ -21,6 +21,14 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { mood, sleepHours, activity } = body;
 
+    // Accept activity in either hours (preferred) or minutes (legacy payloads).
+    const normalizedActivityHours =
+      activity !== undefined
+        ? Number(activity) > 5
+          ? Number(activity) / 60
+          : Number(activity)
+        : undefined;
+
     // Find or create user
     let user = await User.findOne({ email: session.user.email });
 
@@ -35,12 +43,14 @@ export async function POST(request: NextRequest) {
     // Update health data
     if (mood !== undefined) user.mood = mood;
     if (sleepHours !== undefined) user.sleepHours = sleepHours;
-    if (activity !== undefined) user.activity = activity;
+    if (normalizedActivityHours !== undefined) user.activity = normalizedActivityHours;
 
     // Calculate wellness score
-    user.wellnessScore = Math.round(
-      (user.mood * 0.4 + (user.sleepHours / 24) * 100 * 0.3 + (user.activity / 24) * 100 * 0.3)
-    );
+    const moodScore = Math.min(Number(user.mood) / 8, 1) * 100; // target: mood 8
+    const sleepScore = Math.min(Number(user.sleepHours) / 8, 1) * 100; // target: 8h
+    const activityScore = Math.min(Number(user.activity) / 1, 1) * 100; // target: 1h (60 min)
+
+    user.wellnessScore = Math.round(moodScore * 0.4 + sleepScore * 0.3 + activityScore * 0.3);
 
     // Add to health metrics history
     user.healthMetrics.push({
@@ -57,13 +67,25 @@ export async function POST(request: NextRequest) {
 
     await user.save();
 
-    return NextResponse.json(user);
+    return NextResponse.json({
+      ...user.toObject(),
+      saved: true,
+    });
   } catch (error) {
     console.error('Error updating health data:', error);
-    return NextResponse.json(
-      { error: 'Failed to save health data', details: String(error) },
-      { status: 500 }
-    );
+
+    const reason = error instanceof Error ? error.message : 'Unknown error';
+    const isDbIssue = /mongo|database|serverselection|auth/i.test(reason);
+
+    // Return a non-throwing fallback so UI can keep working during temporary DB outages.
+    return NextResponse.json({
+      saved: false,
+      dbUnavailable: isDbIssue,
+      warning: isDbIssue
+        ? `Database unavailable. ${reason}`
+        : 'Failed to save health data.',
+      reason,
+    });
   }
 }
 
@@ -96,9 +118,16 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(user);
   } catch (error) {
     console.error('Error fetching user data:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch user data', details: String(error) },
-      { status: 500 }
-    );
+
+    // Fallback payload keeps dashboard usable when DB is temporarily unavailable.
+    return NextResponse.json({
+      wellnessScore: 0,
+      mood: 5,
+      sleepHours: 7,
+      activity: 0,
+      healthMetrics: [],
+      dbUnavailable: true,
+      warning: 'Using fallback data because database is unavailable.',
+    });
   }
 }
