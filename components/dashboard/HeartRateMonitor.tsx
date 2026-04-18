@@ -138,6 +138,7 @@ export function HeartRateMonitor() {
   const latestBpmRef = useRef<number | null>(null);
   const isFingerDetectedRef = useRef(false);
   const measurementStartedAtRef = useRef<number>(0);
+  const isRunningRef = useRef(false);
 
   const [isRunning, setIsRunning] = useState(false);
   const [bpm, setBpm] = useState<number | null>(null);
@@ -181,6 +182,8 @@ export function HeartRateMonitor() {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     }
+
+    isRunningRef.current = false;
 
     if (streamRef.current) {
       for (const track of streamRef.current.getTracks()) {
@@ -233,7 +236,7 @@ export function HeartRateMonitor() {
     const video = videoRef.current;
     const canvas = canvasRef.current;
 
-    if (!video || !canvas || !isRunning) {
+    if (!video || !canvas || !isRunningRef.current) {
       return;
     }
 
@@ -336,7 +339,7 @@ export function HeartRateMonitor() {
     }
 
     rafRef.current = requestAnimationFrame(processFrame);
-  }, [isRunning]);
+  }, []);
 
   const startMonitoring = useCallback(async () => {
     setError(null);
@@ -374,11 +377,13 @@ export function HeartRateMonitor() {
       const supportsTorch = Boolean(capabilities && 'torch' in capabilities);
       setTorchSupported(supportsTorch);
       measurementStartedAtRef.current = performance.now();
+      isRunningRef.current = true;
 
       setIsRunning(true);
       setStatus('Place finger over camera to start measuring');
       rafRef.current = requestAnimationFrame(processFrame);
     } catch (e) {
+      isRunningRef.current = false;
       setIsRunning(false);
       const message = e instanceof Error ? e.message : 'Unable to access camera.';
       setError(`Camera start failed: ${message}`);
