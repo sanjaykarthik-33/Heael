@@ -75,7 +75,7 @@ function estimateBpmFromAutocorrelation(samples: Sample[]): number | null {
     }
   }
 
-  if (bestLag <= 0 || bestCorr < 0.18) {
+  if (bestLag <= 0 || bestCorr < 0.08) {
     return null;
   }
 
@@ -114,7 +114,7 @@ function estimateBpm(samples: Sample[]): { bpm: number | null; quality: number }
 
   const absMean =
     detrended.reduce((sum, v) => sum + Math.abs(v), 0) / Math.max(1, detrended.length);
-  if (absMean < 0.18) {
+  if (absMean < 0.03) {
     return { bpm: null, quality: 10 };
   }
 
@@ -140,6 +140,10 @@ function estimateBpm(samples: Sample[]): { bpm: number | null; quality: number }
   }
 
   if (peaks.length < 2) {
+    const autoBpm = estimateBpmFromAutocorrelation(samples);
+    if (autoBpm !== null) {
+      return { bpm: Math.round(autoBpm), quality: 40 };
+    }
     return { bpm: null, quality: 15 };
   }
 
@@ -152,6 +156,10 @@ function estimateBpm(samples: Sample[]): { bpm: number | null; quality: number }
   }
 
   if (intervals.length < 2) {
+    const autoBpm = estimateBpmFromAutocorrelation(samples);
+    if (autoBpm !== null) {
+      return { bpm: Math.round(autoBpm), quality: 42 };
+    }
     return { bpm: null, quality: 20 };
   }
 
@@ -201,6 +209,7 @@ export function HeartRateMonitor() {
   const [torchSupported, setTorchSupported] = useState(false);
   const [torchEnabled, setTorchEnabled] = useState(false);
   const [signalLevel, setSignalLevel] = useState(0);
+  const [sampleCount, setSampleCount] = useState(0);
 
   const warning = useMemo(() => {
     if (bpm === null) {
@@ -244,6 +253,7 @@ export function HeartRateMonitor() {
     setTorchSupported(false);
     setIsFingerDetected(false);
     setStatus('Measurement stopped');
+    setSampleCount(0);
   }, []);
 
   const toggleTorch = useCallback(async () => {
@@ -299,12 +309,19 @@ export function HeartRateMonitor() {
         let red = 0;
         let green = 0;
         let blue = 0;
+        let redDominantPixels = 0;
         const count = image.data.length / 4;
 
         for (let i = 0; i < image.data.length; i += 4) {
-          red += image.data[i];
-          green += image.data[i + 1];
-          blue += image.data[i + 2];
+          const r = image.data[i];
+          const g = image.data[i + 1];
+          const b = image.data[i + 2];
+          red += r;
+          green += g;
+          blue += b;
+          if (r > g && r > b) {
+            redDominantPixels++;
+          }
         }
 
         const avgR = red / count;
@@ -315,24 +332,34 @@ export function HeartRateMonitor() {
 
         const redRatio = avgR / sumRgb;
         const redDominance = avgR / Math.max(1, avgG);
+        const redCoverage = redDominantPixels / Math.max(1, count);
 
         const fingerDetected =
-          brightness > 20 && (redDominance > 1.08 || (redRatio > 0.37 && avgR > 50));
+          brightness > 12 && (redCoverage > 0.34 || redDominance > 1.03 || redRatio > 0.33);
         setIsFingerDetected(fingerDetected);
 
-        if (fingerDetected) {
-          const rawSignal = redRatio * 1000;
+        const canSample = brightness > 10 && redRatio > 0.26;
+        if (canSample) {
+          const rawSignal = redRatio * 10000;
           const prev = smoothSignalRef.current;
-          const smoothed = prev === null ? rawSignal : prev * 0.8 + rawSignal * 0.2;
+          const smoothed = prev === null ? rawSignal : prev * 0.7 + rawSignal * 0.3;
           smoothSignalRef.current = smoothed;
           samplesRef.current.push({ t: now, v: smoothed });
+          setSampleCount(samplesRef.current.length);
 
-          const normalizedLevel = clamp((Math.abs(smoothed - (prev ?? smoothed)) / 3) * 100, 0, 100);
+          const normalizedLevel = clamp((Math.abs(smoothed - (prev ?? smoothed)) / 1.2) * 100, 0, 100);
           setSignalLevel(Math.round(normalizedLevel));
-          setStatus('Reading pulse... keep still');
+          if (fingerDetected) {
+            setStatus('Reading pulse... keep still');
+          } else {
+            setStatus('Signal detected. Cover lens fully for better reading');
+          }
         } else {
           setSignalLevel(0);
+          setSampleCount(0);
           setStatus('Place finger fully over camera lens');
+          samplesRef.current = [];
+          bpmHistoryRef.current = [];
         }
 
         const windowMs = 18000;
@@ -367,6 +394,7 @@ export function HeartRateMonitor() {
     setBpm(null);
     setQuality(0);
     setSignalLevel(0);
+    setSampleCount(0);
     samplesRef.current = [];
     bpmHistoryRef.current = [];
     smoothSignalRef.current = null;
@@ -453,6 +481,8 @@ export function HeartRateMonitor() {
             />
           </div>
         </div>
+
+        <p className="text-xs text-foreground/60">Captured samples: {sampleCount}</p>
 
         <p className="text-sm text-foreground/70">{status}</p>
 
