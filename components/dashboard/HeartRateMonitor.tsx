@@ -190,6 +190,7 @@ export function HeartRateMonitor() {
   const lastEstimateAtRef = useRef<number>(0);
   const smoothSignalRef = useRef<number | null>(null);
   const bpmHistoryRef = useRef<number[]>([]);
+  const isRunningRef = useRef(false);
 
   const [isRunning, setIsRunning] = useState(false);
   const [bpm, setBpm] = useState<number | null>(null);
@@ -215,6 +216,8 @@ export function HeartRateMonitor() {
   }, [bpm]);
 
   const stopMonitoring = useCallback(() => {
+    isRunningRef.current = false;
+
     if (rafRef.current) {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
@@ -268,7 +271,7 @@ export function HeartRateMonitor() {
     const video = videoRef.current;
     const canvas = canvasRef.current;
 
-    if (!video || !canvas || !isRunning) {
+    if (!video || !canvas || !isRunningRef.current) {
       return;
     }
 
@@ -356,7 +359,7 @@ export function HeartRateMonitor() {
     }
 
     rafRef.current = requestAnimationFrame(processFrame);
-  }, [isRunning]);
+  }, []);
 
   const startMonitoring = useCallback(async () => {
     setError(null);
@@ -394,6 +397,7 @@ export function HeartRateMonitor() {
       const supportsTorch = Boolean(capabilities && 'torch' in capabilities);
       setTorchSupported(supportsTorch);
 
+      isRunningRef.current = true;
       setIsRunning(true);
       setStatus('Place finger over camera to start measuring');
       rafRef.current = requestAnimationFrame(processFrame);
