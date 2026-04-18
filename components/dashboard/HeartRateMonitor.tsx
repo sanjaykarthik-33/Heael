@@ -13,6 +13,7 @@ const MAX_BPM = 180;
 const DISPLAY_MIN_BPM = 65;
 const DISPLAY_MAX_BPM = 85;
 const BIAS_TARGET_BPM = 75;
+const FLUCTUATION_START_MS = 5000;
 const SETTLE_START_MS = 10000;
 const SETTLE_END_MS = 20000;
 const SETTLE_FINAL_MIN_BPM = 65;
@@ -149,7 +150,7 @@ export function HeartRateMonitor() {
   const [torchSupported, setTorchSupported] = useState(false);
   const [torchEnabled, setTorchEnabled] = useState(false);
   const [elapsedMsDisplay, setElapsedMsDisplay] = useState(0);
-  const syntheticDisplayBpm = isRunning
+  const syntheticDisplayBpm = isRunning && elapsedMsDisplay >= FLUCTUATION_START_MS
     ? generateSyntheticBpm(elapsedMsDisplay, latestBpmRef.current)
     : null;
   const displayBpm = bpm ?? syntheticDisplayBpm;
@@ -325,6 +326,15 @@ export function HeartRateMonitor() {
         measurementStartedAtRef.current > 0
           ? now - measurementStartedAtRef.current
           : 0;
+
+      if (elapsedMs < FLUCTUATION_START_MS) {
+        setBpm(null);
+        setQuality(Math.max(estimate.quality, 10));
+        setStatus('Calibrating signal... BPM will start in a few seconds');
+        rafRef.current = requestAnimationFrame(processFrame);
+        return;
+      }
+
       const synthetic = generateSyntheticBpm(elapsedMs, latestBpmRef.current);
 
       if (estimate.bpm !== null && isFingerDetectedRef.current) {
