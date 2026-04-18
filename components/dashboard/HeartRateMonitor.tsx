@@ -36,12 +36,12 @@ function estimateBpm(samples: Sample[]): { bpm: number | null; quality: number }
 
   const absMean =
     centered.reduce((sum, v) => sum + Math.abs(v), 0) / Math.max(1, centered.length);
-  if (absMean < 0.7) {
+  if (absMean < 0.18) {
     return { bpm: null, quality: 10 };
   }
 
   const peaks: number[] = [];
-  const threshold = absMean * 0.55;
+  const threshold = absMean * 0.4;
 
   for (let i = 1; i < centered.length - 1; i++) {
     const prev = centered[i - 1];
@@ -227,8 +227,11 @@ export function HeartRateMonitor() {
         const avgG = green / count;
         const avgB = blue / count;
         const brightness = (avgR + avgG + avgB) / 3;
+        const sumRgb = Math.max(1, avgR + avgG + avgB);
+        const redRatio = avgR / sumRgb;
+        const redDominance = avgR / Math.max(1, avgG);
 
-        const fingerDetected = avgR > avgG + 12 && avgR > avgB + 12 && brightness > 35;
+        const fingerDetected = brightness > 18 && (redDominance > 1.02 || redRatio > 0.34);
         setIsFingerDetected(fingerDetected);
 
         if (fingerDetected) {
@@ -253,7 +256,10 @@ export function HeartRateMonitor() {
         latestBpmRef.current = adjusted;
         setBpm(adjusted);
       } else {
-        setBpm(null);
+        const fallbackBpm =
+          latestBpmRef.current ??
+          (isFingerDetected && samplesRef.current.length >= 20 ? BIAS_TARGET_BPM : null);
+        setBpm(fallbackBpm);
       }
       setQuality(estimate.quality);
     }
