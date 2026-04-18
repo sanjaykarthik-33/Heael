@@ -20,8 +20,8 @@ export function StepCounter() {
   const [distanceKm, setDistanceKm] = useState(0);
   const [calories, setCalories] = useState(0);
   const [cadenceSpm, setCadenceSpm] = useState(0);
-  const [strideLengthCm, setStrideLengthCm] = useState(75);
-  const [weightKg, setWeightKg] = useState(70);
+  const [strideLengthCm, setStrideLengthCm] = useState<number | ''>('');
+  const [weightKg, setWeightKg] = useState<number | ''>('');
   const [error, setError] = useState<string | null>(null);
 
   const motionHandlerRef = useRef<((event: DeviceMotionEvent) => void) | null>(null);
@@ -32,12 +32,20 @@ export function StepCounter() {
   const stepTimesRef = useRef<number[]>([]);
   const isTrackingRef = useRef(false);
 
-  const strideMeters = useMemo(() => clamp(strideLengthCm / 100, 0.35, 1.5), [strideLengthCm]);
+  const canStartTracking = strideLengthCm !== '' && weightKg !== '';
+
+  const strideMeters = useMemo(() => {
+    if (strideLengthCm === '') {
+      return 0.75;
+    }
+    return clamp(strideLengthCm / 100, 0.35, 1.5);
+  }, [strideLengthCm]);
 
   const updateDerivedMetrics = useCallback((nextSteps: number) => {
     const nextDistanceKm = (nextSteps * strideMeters) / 1000;
     const kcalPerKmPerKg = 0.75;
-    const nextCalories = nextDistanceKm * clamp(weightKg, 30, 220) * kcalPerKmPerKg;
+    const effectiveWeight = weightKg === '' ? 70 : weightKg;
+    const nextCalories = nextDistanceKm * clamp(effectiveWeight, 30, 220) * kcalPerKmPerKg;
     setDistanceKm(nextDistanceKm);
     setCalories(nextCalories);
   }, [strideMeters, weightKg]);
@@ -77,6 +85,11 @@ export function StepCounter() {
 
   const startTracking = useCallback(async () => {
     setError(null);
+
+    if (!canStartTracking) {
+      setError('Please enter stride length and weight before starting step tracking.');
+      return;
+    }
 
     const permission = await requestMotionPermission();
     if (permission === 'unsupported') {
@@ -149,7 +162,7 @@ export function StepCounter() {
 
     motionHandlerRef.current = handler;
     window.addEventListener('devicemotion', handler, { passive: true });
-  }, [requestMotionPermission, updateDerivedMetrics]);
+  }, [canStartTracking, requestMotionPermission, updateDerivedMetrics]);
 
   const resetCounter = useCallback(() => {
     setSteps(0);
@@ -227,7 +240,15 @@ export function StepCounter() {
               min={35}
               max={150}
               value={strideLengthCm}
-              onChange={(e) => setStrideLengthCm(Number(e.target.value) || 75)}
+              onChange={(e) => {
+                const value = e.target.value;
+                if (value === '') {
+                  setStrideLengthCm('');
+                  return;
+                }
+                setStrideLengthCm(Number(value));
+              }}
+              placeholder="Enter your stride length"
               className="mt-2 w-full rounded-md bg-black/20 border border-white/15 px-3 py-2 text-foreground"
             />
           </label>
@@ -238,11 +259,25 @@ export function StepCounter() {
               min={30}
               max={220}
               value={weightKg}
-              onChange={(e) => setWeightKg(Number(e.target.value) || 70)}
+              onChange={(e) => {
+                const value = e.target.value;
+                if (value === '') {
+                  setWeightKg('');
+                  return;
+                }
+                setWeightKg(Number(value));
+              }}
+              placeholder="Enter your weight"
               className="mt-2 w-full rounded-md bg-black/20 border border-white/15 px-3 py-2 text-foreground"
             />
           </label>
         </div>
+
+        {!canStartTracking && (
+          <p className="text-xs text-amber-300">
+            Enter stride length and weight to enable Start Step Tracking.
+          </p>
+        )}
 
         <p className="text-sm text-foreground/70">{status}</p>
         {error && <p className="text-sm text-red-300">{error}</p>}
@@ -251,7 +286,8 @@ export function StepCounter() {
           {!isTracking ? (
             <button
               onClick={startTracking}
-              className="px-4 py-2 rounded-md bg-primary text-primary-foreground font-medium"
+              disabled={!canStartTracking}
+              className="px-4 py-2 rounded-md bg-primary text-primary-foreground font-medium disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Start Step Tracking
             </button>
