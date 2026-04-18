@@ -8,6 +8,12 @@ type Sample = {
   v: number;
 };
 
+type BpmEstimate = {
+  bpm: number | null;
+  predictedBpm: number | null;
+  quality: number;
+};
+
 const MIN_BPM = 40;
 const MAX_BPM = 180;
 
@@ -27,9 +33,88 @@ function median(values: number[]): number {
   return sorted[mid];
 }
 
-function estimateBpmFromAutocorrelation(samples: Sample[]): number | null {
-  if (samples.length < 40) {
+function weightedAverage(items: Array<{ value: number; weight: number }>): number | null {
+  if (items.length === 0) {
     return null;
+  }
+
+  let weightedSum = 0;
+  let totalWeight = 0;
+  for (const item of items) {
+    weightedSum += item.value * item.weight;
+    totalWeight += item.weight;
+  }
+
+  if (totalWeight <= 0) {
+    return null;
+  }
+
+  return weightedSum / totalWeight;
+}
+
+function estimateBpmFromSpectrum(samples: Sample[]): { bpm: number | null; strength: number } {
+  if (samples.length < 30) {
+    return { bpm: null, strength: 0 };
+  }
+
+  const values = samples.map((s) => s.v);
+  const durationMs = samples[samples.length - 1].t - samples[0].t;
+  if (durationMs <= 0) {
+    return { bpm: null, strength: 0 };
+  }
+
+  const dtSec = (durationMs / Math.max(1, values.length - 1)) / 1000;
+  if (!Number.isFinite(dtSec) || dtSec <= 0) {
+    return { bpm: null, strength: 0 };
+  }
+
+  const mean = values.reduce((sum, v) => sum + v, 0) / values.length;
+  const centered = values.map((v) => v - mean);
+
+  const minHz = MIN_BPM / 60;
+  const maxHz = MAX_BPM / 60;
+  const stepHz = 0.02;
+
+  let bestHz = 0;
+  let bestPower = 0;
+  let secondPower = 0;
+  let totalPower = 0;
+
+  for (let hz = minHz; hz <= maxHz; hz += stepHz) {
+    let re = 0;
+    let im = 0;
+    for (let i = 0; i < centered.length; i++) {
+      const phase = 2 * Math.PI * hz * i * dtSec;
+      re += centered[i] * Math.cos(phase);
+      im -= centered[i] * Math.sin(phase);
+    }
+
+    const power = re * re + im * im;
+    totalPower += power;
+
+    if (power > bestPower) {
+      secondPower = bestPower;
+      bestPower = power;
+      bestHz = hz;
+    } else if (power > secondPower) {
+      secondPower = power;
+    }
+  }
+
+  if (bestHz <= 0 || bestPower <= 0) {
+    return { bpm: null, strength: 0 };
+  }
+
+  const separation = bestPower / Math.max(1e-6, secondPower);
+  const dominance = bestPower / Math.max(1e-6, totalPower);
+  const strength = clamp((separation * 0.6 + dominance * 80) / 2, 0, 1);
+
+  return { bpm: bestHz * 60, strength };
+}
+
+function estimateBpmFromAutocorrelation(samples: Sample[]): { bpm: number | null; corr: number } {
+  if (samples.length < 40) {
+    return { bpm: null, corr: 0 };
   }
 
   const values = samples.map((s) => s.v);
@@ -38,7 +123,7 @@ function estimateBpmFromAutocorrelation(samples: Sample[]): number | null {
   const avgDt =
     (times[times.length - 1] - times[0]) / Math.max(1, times.length - 1);
   if (!Number.isFinite(avgDt) || avgDt <= 0) {
-    return null;
+    return { bpm: null, corr: 0 };
   }
 
   const mean = values.reduce((sum, v) => sum + v, 0) / values.length;
@@ -47,7 +132,7 @@ function estimateBpmFromAutocorrelation(samples: Sample[]): number | null {
   const minLag = Math.max(2, Math.floor(300 / avgDt));
   const maxLag = Math.min(centered.length - 2, Math.floor(1500 / avgDt));
   if (maxLag <= minLag) {
-    return null;
+    return { bpm: null, corr: 0 };
   }
 
   let bestLag = 0;
@@ -76,21 +161,21 @@ function estimateBpmFromAutocorrelation(samples: Sample[]): number | null {
   }
 
   if (bestLag <= 0 || bestCorr < 0.08) {
-    return null;
+    return { bpm: null, corr: bestCorr };
   }
 
   const periodMs = bestLag * avgDt;
   const bpm = 60000 / periodMs;
   if (bpm < MIN_BPM || bpm > MAX_BPM) {
-    return null;
+    return { bpm: null, corr: bestCorr };
   }
 
-  return bpm;
+  return { bpm, corr: bestCorr };
 }
 
-function estimateBpm(samples: Sample[]): { bpm: number | null; quality: number } {
+function estimateBpm(samples: Sample[]): BpmEstimate {
   if (samples.length < 30) {
-    return { bpm: null, quality: 0 };
+    return { bpm: null, predictedBpm: null, quality: 0 };
   }
 
   const values = samples.map((s) => s.v);
@@ -115,7 +200,7 @@ function estimateBpm(samples: Sample[]): { bpm: number | null; quality: number }
   const absMean =
     detrended.reduce((sum, v) => sum + Math.abs(v), 0) / Math.max(1, detrended.length);
   if (absMean < 0.03) {
-    return { bpm: null, quality: 10 };
+    return { bpm: null, predictedBpm: null, quality: 10 };
   }
 
   const rms = Math.sqrt(
@@ -139,14 +224,6 @@ function estimateBpm(samples: Sample[]): { bpm: number | null; quality: number }
     }
   }
 
-  if (peaks.length < 2) {
-    const autoBpm = estimateBpmFromAutocorrelation(samples);
-    if (autoBpm !== null) {
-      return { bpm: Math.round(autoBpm), quality: 40 };
-    }
-    return { bpm: null, quality: 15 };
-  }
-
   const intervals: number[] = [];
   for (let i = 1; i < peaks.length; i++) {
     const delta = peaks[i] - peaks[i - 1];
@@ -155,37 +232,52 @@ function estimateBpm(samples: Sample[]): { bpm: number | null; quality: number }
     }
   }
 
-  if (intervals.length < 2) {
-    const autoBpm = estimateBpmFromAutocorrelation(samples);
-    if (autoBpm !== null) {
-      return { bpm: Math.round(autoBpm), quality: 42 };
-    }
-    return { bpm: null, quality: 20 };
-  }
-
   const bpms = intervals
     .map((delta) => 60000 / delta)
     .filter((bpm) => bpm >= MIN_BPM && bpm <= MAX_BPM);
 
-  if (bpms.length < 2) {
-    const autoBpm = estimateBpmFromAutocorrelation(samples);
-    if (autoBpm !== null) {
-      return { bpm: Math.round(autoBpm), quality: 45 };
-    }
-    return { bpm: null, quality: 25 };
+  const peakBpm = bpms.length >= 2 ? median(bpms) : null;
+  const peakVariance =
+    bpms.length >= 2
+      ? bpms.reduce((sum, value) => sum + Math.pow(value - peakBpm!, 2), 0) / bpms.length
+      : 0;
+  const peakStdDev = Math.sqrt(peakVariance);
+
+  const auto = estimateBpmFromAutocorrelation(samples);
+  const spectrum = estimateBpmFromSpectrum(samples);
+
+  const candidates: Array<{ value: number; weight: number }> = [];
+  if (peakBpm !== null) {
+    const peakWeight = clamp(1.15 - peakStdDev / 25, 0.25, 1.1);
+    candidates.push({ value: peakBpm, weight: peakWeight });
+  }
+  if (auto.bpm !== null) {
+    candidates.push({ value: auto.bpm, weight: clamp(auto.corr * 2.5, 0.2, 0.9) });
+  }
+  if (spectrum.bpm !== null) {
+    candidates.push({ value: spectrum.bpm, weight: clamp(spectrum.strength * 1.6, 0.15, 0.8) });
   }
 
-  const bpm = median(bpms);
+  const blended = weightedAverage(candidates);
+  if (blended === null) {
+    return { bpm: null, predictedBpm: null, quality: 15 };
+  }
 
-  const variance =
-    bpms.reduce((sum, value) => sum + Math.pow(value - bpm, 2), 0) / Math.max(1, bpms.length);
-  const stdDev = Math.sqrt(variance);
+  const disagreements = candidates.map((c) => Math.abs(c.value - blended));
+  const disagreement = disagreements.length > 0 ? median(disagreements) : 25;
+  const agreementScore = clamp(100 - disagreement * 7, 10, 100);
+  const sampleScore = clamp((samples.length / 150) * 100, 15, 100);
+  const amplitudeScore = clamp(absMean * 220, 15, 100);
+  const quality = Math.round((agreementScore * 0.5 + sampleScore * 0.25 + amplitudeScore * 0.25));
 
-  const stabilityScore = clamp(100 - stdDev * 8, 20, 100);
-  const sampleScore = clamp((bpms.length / 10) * 100, 10, 100);
-  const quality = Math.round((stabilityScore * 0.65 + sampleScore * 0.35));
+  const rounded = Math.round(blended);
+  const isHighConfidence = quality >= 55;
 
-  return { bpm: Math.round(bpm), quality };
+  return {
+    bpm: isHighConfidence ? rounded : null,
+    predictedBpm: rounded,
+    quality,
+  };
 }
 
 export function HeartRateMonitor() {
@@ -210,6 +302,7 @@ export function HeartRateMonitor() {
   const [torchEnabled, setTorchEnabled] = useState(false);
   const [signalLevel, setSignalLevel] = useState(0);
   const [sampleCount, setSampleCount] = useState(0);
+  const [isPredicted, setIsPredicted] = useState(false);
 
   const warning = useMemo(() => {
     if (bpm === null) {
@@ -254,6 +347,7 @@ export function HeartRateMonitor() {
     setIsFingerDetected(false);
     setStatus('Measurement stopped');
     setSampleCount(0);
+    setIsPredicted(false);
   }, []);
 
   const toggleTorch = useCallback(async () => {
@@ -372,14 +466,17 @@ export function HeartRateMonitor() {
       lastEstimateAtRef.current = now;
       const estimate = estimateBpm(samplesRef.current);
 
-      if (estimate.bpm !== null) {
-        bpmHistoryRef.current.push(estimate.bpm);
+      if (estimate.predictedBpm !== null) {
+        bpmHistoryRef.current.push(estimate.predictedBpm);
         if (bpmHistoryRef.current.length > 6) {
           bpmHistoryRef.current.shift();
         }
-        setBpm(Math.round(median(bpmHistoryRef.current)));
+        const stable = Math.round(median(bpmHistoryRef.current));
+        setBpm(stable);
+        setIsPredicted(estimate.bpm === null);
       } else if (bpmHistoryRef.current.length === 0) {
         setBpm(null);
+        setIsPredicted(false);
       }
 
       setQuality(estimate.quality);
@@ -395,6 +492,7 @@ export function HeartRateMonitor() {
     setQuality(0);
     setSignalLevel(0);
     setSampleCount(0);
+    setIsPredicted(false);
     samplesRef.current = [];
     bpmHistoryRef.current = [];
     smoothSignalRef.current = null;
@@ -464,7 +562,12 @@ export function HeartRateMonitor() {
         <div className="grid grid-cols-2 gap-3">
           <div className="rounded-lg border border-white/10 p-3">
             <p className="text-xs text-foreground/60">BPM</p>
-            <p className="text-2xl font-bold text-foreground">{bpm ?? '--'}</p>
+            <p className="text-2xl font-bold text-foreground">
+              {bpm !== null ? `${isPredicted ? '~' : ''}${bpm}` : '--'}
+            </p>
+            {bpm !== null && isPredicted && (
+              <p className="text-[11px] text-amber-300">Predicted from signal samples</p>
+            )}
           </div>
           <div className="rounded-lg border border-white/10 p-3">
             <p className="text-xs text-foreground/60">Signal Quality</p>
