@@ -15,8 +15,81 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+function median(values: number[]): number {
+  if (values.length === 0) {
+    return 0;
+  }
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 0) {
+    return (sorted[mid - 1] + sorted[mid]) / 2;
+  }
+  return sorted[mid];
+}
+
+function estimateBpmFromAutocorrelation(samples: Sample[]): number | null {
+  if (samples.length < 40) {
+    return null;
+  }
+
+  const values = samples.map((s) => s.v);
+  const times = samples.map((s) => s.t);
+
+  const avgDt =
+    (times[times.length - 1] - times[0]) / Math.max(1, times.length - 1);
+  if (!Number.isFinite(avgDt) || avgDt <= 0) {
+    return null;
+  }
+
+  const mean = values.reduce((sum, v) => sum + v, 0) / values.length;
+  const centered = values.map((v) => v - mean);
+
+  const minLag = Math.max(2, Math.floor(300 / avgDt));
+  const maxLag = Math.min(centered.length - 2, Math.floor(1500 / avgDt));
+  if (maxLag <= minLag) {
+    return null;
+  }
+
+  let bestLag = 0;
+  let bestCorr = -Infinity;
+
+  for (let lag = minLag; lag <= maxLag; lag++) {
+    let corr = 0;
+    let normA = 0;
+    let normB = 0;
+
+    for (let i = 0; i < centered.length - lag; i++) {
+      const a = centered[i];
+      const b = centered[i + lag];
+      corr += a * b;
+      normA += a * a;
+      normB += b * b;
+    }
+
+    const norm = Math.sqrt(normA * normB);
+    const score = norm > 0 ? corr / norm : -Infinity;
+
+    if (score > bestCorr) {
+      bestCorr = score;
+      bestLag = lag;
+    }
+  }
+
+  if (bestLag <= 0 || bestCorr < 0.18) {
+    return null;
+  }
+
+  const periodMs = bestLag * avgDt;
+  const bpm = 60000 / periodMs;
+  if (bpm < MIN_BPM || bpm > MAX_BPM) {
+    return null;
+  }
+
+  return bpm;
+}
+
 function estimateBpm(samples: Sample[]): { bpm: number | null; quality: number } {
-  if (samples.length < 45) {
+  if (samples.length < 30) {
     return { bpm: null, quality: 0 };
   }
 
@@ -26,19 +99,36 @@ function estimateBpm(samples: Sample[]): { bpm: number | null; quality: number }
   const mean = values.reduce((sum, v) => sum + v, 0) / values.length;
   const centered = values.map((v) => v - mean);
 
+  const detrended = centered.map((_, i) => {
+    const start = Math.max(0, i - 3);
+    const end = Math.min(centered.length - 1, i + 3);
+    let sum = 0;
+    let count = 0;
+    for (let j = start; j <= end; j++) {
+      sum += centered[j];
+      count++;
+    }
+    const localMean = count > 0 ? sum / count : 0;
+    return centered[i] - localMean;
+  });
+
   const absMean =
-    centered.reduce((sum, v) => sum + Math.abs(v), 0) / Math.max(1, centered.length);
-  if (absMean < 0.7) {
+    detrended.reduce((sum, v) => sum + Math.abs(v), 0) / Math.max(1, detrended.length);
+  if (absMean < 0.18) {
     return { bpm: null, quality: 10 };
   }
 
-  const peaks: number[] = [];
-  const threshold = absMean * 0.55;
+  const rms = Math.sqrt(
+    detrended.reduce((sum, v) => sum + v * v, 0) / Math.max(1, detrended.length)
+  );
 
-  for (let i = 1; i < centered.length - 1; i++) {
-    const prev = centered[i - 1];
-    const curr = centered[i];
-    const next = centered[i + 1];
+  const peaks: number[] = [];
+  const threshold = Math.max(absMean * 0.45, rms * 0.35);
+
+  for (let i = 1; i < detrended.length - 1; i++) {
+    const prev = detrended[i - 1];
+    const curr = detrended[i];
+    const next = detrended[i + 1];
 
     if (curr > prev && curr > next && curr > threshold) {
       const now = times[i];
@@ -70,10 +160,14 @@ function estimateBpm(samples: Sample[]): { bpm: number | null; quality: number }
     .filter((bpm) => bpm >= MIN_BPM && bpm <= MAX_BPM);
 
   if (bpms.length < 2) {
+    const autoBpm = estimateBpmFromAutocorrelation(samples);
+    if (autoBpm !== null) {
+      return { bpm: Math.round(autoBpm), quality: 45 };
+    }
     return { bpm: null, quality: 25 };
   }
 
-  const bpm = bpms.reduce((sum, value) => sum + value, 0) / bpms.length;
+  const bpm = median(bpms);
 
   const variance =
     bpms.reduce((sum, value) => sum + Math.pow(value - bpm, 2), 0) / Math.max(1, bpms.length);
@@ -94,6 +188,8 @@ export function HeartRateMonitor() {
   const samplesRef = useRef<Sample[]>([]);
   const lastSampleAtRef = useRef<number>(0);
   const lastEstimateAtRef = useRef<number>(0);
+  const smoothSignalRef = useRef<number | null>(null);
+  const bpmHistoryRef = useRef<number[]>([]);
 
   const [isRunning, setIsRunning] = useState(false);
   const [bpm, setBpm] = useState<number | null>(null);
@@ -103,6 +199,7 @@ export function HeartRateMonitor() {
   const [isFingerDetected, setIsFingerDetected] = useState(false);
   const [torchSupported, setTorchSupported] = useState(false);
   const [torchEnabled, setTorchEnabled] = useState(false);
+  const [signalLevel, setSignalLevel] = useState(0);
 
   const warning = useMemo(() => {
     if (bpm === null) {
@@ -135,8 +232,10 @@ export function HeartRateMonitor() {
     }
 
     samplesRef.current = [];
+    bpmHistoryRef.current = [];
     lastSampleAtRef.current = 0;
     lastEstimateAtRef.current = 0;
+    smoothSignalRef.current = null;
     setIsRunning(false);
     setTorchEnabled(false);
     setTorchSupported(false);
@@ -178,7 +277,7 @@ export function HeartRateMonitor() {
       return;
     }
 
-    const sampleGapMs = 100;
+    const sampleGapMs = 66;
     if (now - lastSampleAtRef.current >= sampleGapMs) {
       lastSampleAtRef.current = now;
 
@@ -209,27 +308,50 @@ export function HeartRateMonitor() {
         const avgG = green / count;
         const avgB = blue / count;
         const brightness = (avgR + avgG + avgB) / 3;
+        const sumRgb = Math.max(1, avgR + avgG + avgB);
 
-        const fingerDetected = avgR > avgG + 12 && avgR > avgB + 12 && brightness > 35;
+        const redRatio = avgR / sumRgb;
+        const redDominance = avgR / Math.max(1, avgG);
+
+        const fingerDetected =
+          brightness > 20 && (redDominance > 1.08 || (redRatio > 0.37 && avgR > 50));
         setIsFingerDetected(fingerDetected);
 
         if (fingerDetected) {
-          samplesRef.current.push({ t: now, v: avgR });
+          const rawSignal = redRatio * 1000;
+          const prev = smoothSignalRef.current;
+          const smoothed = prev === null ? rawSignal : prev * 0.8 + rawSignal * 0.2;
+          smoothSignalRef.current = smoothed;
+          samplesRef.current.push({ t: now, v: smoothed });
+
+          const normalizedLevel = clamp((Math.abs(smoothed - (prev ?? smoothed)) / 3) * 100, 0, 100);
+          setSignalLevel(Math.round(normalizedLevel));
           setStatus('Reading pulse... keep still');
         } else {
+          setSignalLevel(0);
           setStatus('Place finger fully over camera lens');
         }
 
-        const windowMs = 12000;
+        const windowMs = 18000;
         samplesRef.current = samplesRef.current.filter((s) => now - s.t <= windowMs);
       }
     }
 
-    const estimateGapMs = 800;
+    const estimateGapMs = 500;
     if (now - lastEstimateAtRef.current >= estimateGapMs) {
       lastEstimateAtRef.current = now;
       const estimate = estimateBpm(samplesRef.current);
-      setBpm(estimate.bpm);
+
+      if (estimate.bpm !== null) {
+        bpmHistoryRef.current.push(estimate.bpm);
+        if (bpmHistoryRef.current.length > 6) {
+          bpmHistoryRef.current.shift();
+        }
+        setBpm(Math.round(median(bpmHistoryRef.current)));
+      } else if (bpmHistoryRef.current.length === 0) {
+        setBpm(null);
+      }
+
       setQuality(estimate.quality);
     }
 
@@ -241,7 +363,10 @@ export function HeartRateMonitor() {
     setStatus('Requesting camera permission...');
     setBpm(null);
     setQuality(0);
+    setSignalLevel(0);
     samplesRef.current = [];
+    bpmHistoryRef.current = [];
+    smoothSignalRef.current = null;
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -312,6 +437,16 @@ export function HeartRateMonitor() {
           <div className="rounded-lg border border-white/10 p-3">
             <p className="text-xs text-foreground/60">Signal Quality</p>
             <p className="text-2xl font-bold text-foreground">{quality}%</p>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-white/10 p-3">
+          <p className="text-xs text-foreground/60">Live Signal</p>
+          <div className="mt-2 h-2 w-full rounded-full bg-white/10 overflow-hidden">
+            <div
+              className="h-full rounded-full bg-emerald-400 transition-all duration-300"
+              style={{ width: `${signalLevel}%` }}
+            />
           </div>
         </div>
 
