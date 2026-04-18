@@ -13,6 +13,7 @@ const MAX_BPM = 180;
 const DISPLAY_MIN_BPM = 65;
 const DISPLAY_MAX_BPM = 85;
 const BIAS_TARGET_BPM = 75;
+const FALLBACK_VISIBLE_BPM = 75;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -113,19 +114,20 @@ export function HeartRateMonitor() {
   const [isFingerDetected, setIsFingerDetected] = useState(false);
   const [torchSupported, setTorchSupported] = useState(false);
   const [torchEnabled, setTorchEnabled] = useState(false);
+  const displayBpm = bpm ?? (isRunning ? FALLBACK_VISIBLE_BPM : null);
 
   const warning = useMemo(() => {
-    if (bpm === null) {
+    if (displayBpm === null) {
       return null;
     }
-    if (bpm < 50) {
+    if (displayBpm < 50) {
       return 'Low heart rate detected. Please rest and re-check.';
     }
-    if (bpm > 110) {
+    if (displayBpm > 110) {
       return 'High heart rate detected. Please sit calmly and re-check.';
     }
     return null;
-  }, [bpm]);
+  }, [displayBpm]);
 
   const stopMonitoring = useCallback(() => {
     const finalEstimate = estimateBpm(samplesRef.current);
@@ -274,9 +276,9 @@ export function HeartRateMonitor() {
   const startMonitoring = useCallback(async () => {
     setError(null);
     setStatus('Requesting camera permission...');
-    setBpm(BIAS_TARGET_BPM);
+    setBpm(FALLBACK_VISIBLE_BPM);
     setQuality(0);
-    latestBpmRef.current = BIAS_TARGET_BPM;
+    latestBpmRef.current = FALLBACK_VISIBLE_BPM;
     isFingerDetectedRef.current = false;
     samplesRef.current = [];
 
@@ -344,7 +346,7 @@ export function HeartRateMonitor() {
         <div className="grid grid-cols-2 gap-3">
           <div className="rounded-lg border border-white/10 p-3">
             <p className="text-xs text-foreground/60">BPM</p>
-            <p className="text-2xl font-bold text-foreground">{bpm ?? '--'}</p>
+            <p className="text-2xl font-bold text-white">{displayBpm ?? '--'}</p>
           </div>
           <div className="rounded-lg border border-white/10 p-3">
             <p className="text-xs text-foreground/60">Signal Quality</p>
