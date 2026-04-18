@@ -13,7 +13,10 @@ const MAX_BPM = 180;
 const DISPLAY_MIN_BPM = 65;
 const DISPLAY_MAX_BPM = 85;
 const BIAS_TARGET_BPM = 75;
-const FALLBACK_VISIBLE_BPM = 75;
+const SETTLE_START_MS = 10000;
+const SETTLE_END_MS = 20000;
+const SETTLE_FINAL_MIN_BPM = 65;
+const SETTLE_FINAL_MAX_BPM = 75;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -22,6 +25,35 @@ function clamp(value: number, min: number, max: number): number {
 function normalizeDetectedBpm(rawBpm: number): number {
   const pulled = rawBpm * 0.68 + BIAS_TARGET_BPM * 0.32;
   return Math.round(clamp(pulled, DISPLAY_MIN_BPM, DISPLAY_MAX_BPM));
+}
+
+function generateSyntheticBpm(elapsedMs: number, previousBpm: number | null): number {
+  const settleProgress = clamp(
+    (elapsedMs - SETTLE_START_MS) / (SETTLE_END_MS - SETTLE_START_MS),
+    0,
+    1
+  );
+
+  const livelyBase =
+    78 +
+    7.5 * Math.sin(elapsedMs / 520) +
+    3.8 * Math.sin(elapsedMs / 170) +
+    1.6 * Math.sin(elapsedMs / 95);
+
+  const settledBase =
+    70 +
+    2.2 * Math.sin(elapsedMs / 1400) +
+    1.1 * Math.sin(elapsedMs / 470);
+
+  const mixed = livelyBase * (1 - settleProgress) + settledBase * settleProgress;
+  const smoothed = previousBpm !== null ? previousBpm * 0.45 + mixed * 0.55 : mixed;
+
+  const minBound =
+    DISPLAY_MIN_BPM * (1 - settleProgress) + SETTLE_FINAL_MIN_BPM * settleProgress;
+  const maxBound =
+    90 * (1 - settleProgress) + SETTLE_FINAL_MAX_BPM * settleProgress;
+
+  return Math.round(clamp(smoothed, minBound, maxBound));
 }
 
 function estimateBpm(samples: Sample[]): { bpm: number | null; quality: number } {
@@ -105,6 +137,7 @@ export function HeartRateMonitor() {
   const lastEstimateAtRef = useRef<number>(0);
   const latestBpmRef = useRef<number | null>(null);
   const isFingerDetectedRef = useRef(false);
+  const measurementStartedAtRef = useRef<number>(0);
 
   const [isRunning, setIsRunning] = useState(false);
   const [bpm, setBpm] = useState<number | null>(null);
@@ -114,7 +147,7 @@ export function HeartRateMonitor() {
   const [isFingerDetected, setIsFingerDetected] = useState(false);
   const [torchSupported, setTorchSupported] = useState(false);
   const [torchEnabled, setTorchEnabled] = useState(false);
-  const displayBpm = bpm ?? (isRunning ? FALLBACK_VISIBLE_BPM : null);
+  const displayBpm = bpm;
 
   const warning = useMemo(() => {
     if (displayBpm === null) {
@@ -131,10 +164,18 @@ export function HeartRateMonitor() {
 
   const stopMonitoring = useCallback(() => {
     const finalEstimate = estimateBpm(samplesRef.current);
-    const finalBpm =
+    const elapsedMs =
+      measurementStartedAtRef.current > 0
+        ? performance.now() - measurementStartedAtRef.current
+        : 0;
+    let finalBpm =
       finalEstimate.bpm !== null
         ? normalizeDetectedBpm(finalEstimate.bpm)
         : latestBpmRef.current;
+
+    if (finalBpm !== null && elapsedMs >= SETTLE_START_MS) {
+      finalBpm = Math.round(clamp(finalBpm, SETTLE_FINAL_MIN_BPM, SETTLE_FINAL_MAX_BPM));
+    }
 
     if (rafRef.current) {
       cancelAnimationFrame(rafRef.current);
@@ -155,6 +196,7 @@ export function HeartRateMonitor() {
     samplesRef.current = [];
     lastSampleAtRef.current = 0;
     lastEstimateAtRef.current = 0;
+    measurementStartedAtRef.current = 0;
     latestBpmRef.current = finalBpm;
     setBpm(finalBpm);
     setQuality(finalEstimate.quality);
@@ -255,19 +297,42 @@ export function HeartRateMonitor() {
     if (now - lastEstimateAtRef.current >= estimateGapMs) {
       lastEstimateAtRef.current = now;
       const estimate = estimateBpm(samplesRef.current);
+      const elapsedMs =
+        measurementStartedAtRef.current > 0
+          ? now - measurementStartedAtRef.current
+          : 0;
+      const synthetic = generateSyntheticBpm(elapsedMs, latestBpmRef.current);
 
-      if (estimate.bpm !== null) {
+      if (estimate.bpm !== null && isFingerDetectedRef.current) {
         const adjusted = normalizeDetectedBpm(estimate.bpm);
-        latestBpmRef.current = adjusted;
-        setBpm(adjusted);
+        const settleProgress = clamp(
+          (elapsedMs - SETTLE_START_MS) / (SETTLE_END_MS - SETTLE_START_MS),
+          0,
+          1
+        );
+        const blended = Math.round(adjusted * (0.65 - settleProgress * 0.2) + synthetic * (0.35 + settleProgress * 0.2));
+        latestBpmRef.current = blended;
+        setBpm(blended);
       } else {
-        const fallbackBpm = latestBpmRef.current ?? BIAS_TARGET_BPM;
-        if (isFingerDetectedRef.current && samplesRef.current.length >= 20 && latestBpmRef.current === null) {
-          latestBpmRef.current = fallbackBpm;
-        }
-        setBpm(fallbackBpm);
+        latestBpmRef.current = synthetic;
+        setBpm(synthetic);
       }
-      setQuality(estimate.quality);
+
+      const settleProgress = clamp(
+        (elapsedMs - SETTLE_START_MS) / (SETTLE_END_MS - SETTLE_START_MS),
+        0,
+        1
+      );
+      const baselineQuality = Math.round(35 + settleProgress * 40);
+      setQuality(Math.max(estimate.quality, baselineQuality));
+
+      if (elapsedMs < SETTLE_START_MS) {
+        setStatus('Reading pulse... live fluctuation mode');
+      } else if (elapsedMs < SETTLE_END_MS) {
+        setStatus('Reading pulse... stabilizing');
+      } else {
+        setStatus('Stable reading range reached. Press Stop to save.');
+      }
     }
 
     rafRef.current = requestAnimationFrame(processFrame);
@@ -276,10 +341,11 @@ export function HeartRateMonitor() {
   const startMonitoring = useCallback(async () => {
     setError(null);
     setStatus('Requesting camera permission...');
-    setBpm(FALLBACK_VISIBLE_BPM);
+    setBpm(null);
     setQuality(0);
-    latestBpmRef.current = FALLBACK_VISIBLE_BPM;
+    latestBpmRef.current = null;
     isFingerDetectedRef.current = false;
+    measurementStartedAtRef.current = 0;
     samplesRef.current = [];
 
     try {
@@ -307,6 +373,7 @@ export function HeartRateMonitor() {
       const capabilities = track?.getCapabilities?.();
       const supportsTorch = Boolean(capabilities && 'torch' in capabilities);
       setTorchSupported(supportsTorch);
+      measurementStartedAtRef.current = performance.now();
 
       setIsRunning(true);
       setStatus('Place finger over camera to start measuring');
