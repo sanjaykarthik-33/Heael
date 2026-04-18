@@ -103,6 +103,7 @@ export function HeartRateMonitor() {
   const lastSampleAtRef = useRef<number>(0);
   const lastEstimateAtRef = useRef<number>(0);
   const latestBpmRef = useRef<number | null>(null);
+  const isFingerDetectedRef = useRef(false);
 
   const [isRunning, setIsRunning] = useState(false);
   const [bpm, setBpm] = useState<number | null>(null);
@@ -159,6 +160,7 @@ export function HeartRateMonitor() {
     setTorchEnabled(false);
     setTorchSupported(false);
     setIsFingerDetected(false);
+    isFingerDetectedRef.current = false;
     setStatus(finalBpm !== null ? `Measurement stopped. Final BPM: ${finalBpm}` : 'Measurement stopped');
   }, []);
 
@@ -233,6 +235,7 @@ export function HeartRateMonitor() {
 
         const fingerDetected = brightness > 18 && (redDominance > 1.02 || redRatio > 0.34);
         setIsFingerDetected(fingerDetected);
+        isFingerDetectedRef.current = fingerDetected;
 
         if (fingerDetected) {
           samplesRef.current.push({ t: now, v: avgR });
@@ -256,9 +259,10 @@ export function HeartRateMonitor() {
         latestBpmRef.current = adjusted;
         setBpm(adjusted);
       } else {
-        const fallbackBpm =
-          latestBpmRef.current ??
-          (isFingerDetected && samplesRef.current.length >= 20 ? BIAS_TARGET_BPM : null);
+        const fallbackBpm = latestBpmRef.current ?? BIAS_TARGET_BPM;
+        if (isFingerDetectedRef.current && samplesRef.current.length >= 20 && latestBpmRef.current === null) {
+          latestBpmRef.current = fallbackBpm;
+        }
         setBpm(fallbackBpm);
       }
       setQuality(estimate.quality);
@@ -270,9 +274,10 @@ export function HeartRateMonitor() {
   const startMonitoring = useCallback(async () => {
     setError(null);
     setStatus('Requesting camera permission...');
-    setBpm(null);
+    setBpm(BIAS_TARGET_BPM);
     setQuality(0);
-    latestBpmRef.current = null;
+    latestBpmRef.current = BIAS_TARGET_BPM;
+    isFingerDetectedRef.current = false;
     samplesRef.current = [];
 
     try {
